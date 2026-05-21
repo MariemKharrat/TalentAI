@@ -6,7 +6,7 @@ using Azure.Identity;
 using CareerApp.Core.Interfaces;
 using CareerApp.Core.Models;
 using CareerApp.Infrastructure.Configuration;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace CareerApp.Infrastructure.Services;
 
@@ -19,14 +19,15 @@ public class CvParsingService : ICvParsingService
     ];
 
     private readonly AzureAIOptions _options;
+    private readonly ContentUnderstandingCvParser _contentUnderstandingParser;
 
-    public CvParsingService(IConfiguration configuration)
+    public CvParsingService(IOptions<AzureAIOptions> options, ContentUnderstandingCvParser contentUnderstandingParser)
     {
-        ArgumentNullException.ThrowIfNull(configuration);
-        _options = LoadOptions(configuration);
+        _options = options.Value;
+        _contentUnderstandingParser = contentUnderstandingParser;
     }
 
-    public async Task<Candidate> ParseCvAsync(Stream document, string fileName, CancellationToken cancellationToken = default)
+    public async Task<Candidate> ParseCvAsync(Stream document, string fileName, CvParsingMethod method = CvParsingMethod.ContentUnderstanding, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -35,15 +36,22 @@ public class CvParsingService : ICvParsingService
             throw new ArgumentException("A file name is required.", nameof(fileName));
         }
 
+        if (method == CvParsingMethod.ContentUnderstanding)
+        {
+            return await _contentUnderstandingParser.ParseCvAsync(document, fileName, cancellationToken).ConfigureAwait(false);
+        }
+
         await using var workingCopy = new MemoryStream();
         await document.CopyToAsync(workingCopy, cancellationToken).ConfigureAwait(false);
         workingCopy.Position = 0;
 
-        var extractedText = await ExtractTextAsync(workingCopy, cancellationToken).ConfigureAwait(false);
-        return MapCandidate(extractedText, fileName);
+        var extractedText = await ExtractTextWithDocumentIntelligenceAsync(workingCopy, cancellationToken).ConfigureAwait(false);
+        var candidate = MapCandidate(extractedText, fileName);
+        candidate.ParsingMethod = nameof(CvParsingMethod.DocumentIntelligence);
+        return candidate;
     }
 
-    private async Task<string> ExtractTextAsync(MemoryStream document, CancellationToken cancellationToken)
+    private async Task<string> ExtractTextWithDocumentIntelligenceAsync(MemoryStream document, CancellationToken cancellationToken)
     {
         if (CanUseDocumentIntelligence())
         {
@@ -64,7 +72,7 @@ public class CvParsingService : ICvParsingService
             }
             catch (RequestFailedException)
             {
-                // TODO: Wire the final Azure AI Foundry Document Intelligence endpoint and production retry strategy.
+                // Fallback to text extraction.
             }
         }
 
@@ -79,6 +87,7 @@ public class CvParsingService : ICvParsingService
             Id = Guid.NewGuid(),
             FullName = InferFullName(extractedText, fileName),
             Email = ExtractFirstMatch(extractedText, "[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}"),
+            Phone = ExtractFirstMatch(extractedText, @"(?:\+?\d[\d().\-\s]{7,}\d)"),
             Skills = ExtractSkills(extractedText),
             Summary = BuildSummary(extractedText),
             CvFileName = fileName,
@@ -90,7 +99,6 @@ public class CvParsingService : ICvParsingService
     private DocumentAnalysisClient CreateDocumentAnalysisClient()
     {
         var endpoint = new Uri(_options.DocumentIntelligenceEndpoint, UriKind.Absolute);
-
         return string.IsNullOrWhiteSpace(_options.DocumentIntelligenceKey)
             ? new DocumentAnalysisClient(endpoint, new DefaultAzureCredential())
             : new DocumentAnalysisClient(endpoint, new AzureKeyCredential(_options.DocumentIntelligenceKey));
@@ -151,20 +159,6 @@ public class CvParsingService : ICvParsingService
             .Take(3);
 
         var summary = string.Join(' ', lines);
-
-        // TODO: Replace this heuristic summarization with a structured Azure AI Foundry extraction workflow.
         return summary.Length <= 600 ? summary : summary[..600];
-    }
-
-    private static AzureAIOptions LoadOptions(IConfiguration configuration)
-    {
-        return new AzureAIOptions
-        {
-            DocumentIntelligenceEndpoint = configuration["AzureAI:DocumentIntelligenceEndpoint"] ?? string.Empty,
-            DocumentIntelligenceKey = configuration["AzureAI:DocumentIntelligenceKey"] ?? string.Empty,
-            OpenAIEndpoint = configuration["AzureAI:OpenAIEndpoint"] ?? string.Empty,
-            OpenAIKey = configuration["AzureAI:OpenAIKey"] ?? string.Empty,
-            OpenAIDeploymentName = configuration["AzureAI:OpenAIDeploymentName"] ?? string.Empty
-        };
     }
 }

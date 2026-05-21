@@ -3,13 +3,22 @@ import { Link } from 'react-router-dom';
 import FileUpload from '../components/FileUpload';
 import SkillTag from '../components/SkillTag';
 import { candidatesApi } from '../services/api';
-import { Candidate } from '../types';
+import { Candidate, CvParsingMethod } from '../types';
 
-const formatDate = (value: string) => new Date(value).toLocaleDateString();
+const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString() : '—');
+const formatParsingMethod = (value?: string) =>
+  value === 'DocumentIntelligence'
+    ? 'Document Intelligence (OCR-based)'
+    : 'Content Understanding (AI-powered)';
+const getCandidateName = (candidate: Candidate) =>
+  candidate.fullName?.trim() || `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || 'Unnamed candidate';
+const getCandidateSkills = (candidate: Candidate) => candidate.skills;
+const getCandidateCreatedAt = (candidate: Candidate) => candidate.createdAtUtc ?? candidate.createdAt;
 
 function CandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [uploadedCandidate, setUploadedCandidate] = useState<Candidate | null>(null);
+  const [parsingMethod, setParsingMethod] = useState<CvParsingMethod>('ContentUnderstanding');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -35,7 +44,7 @@ function CandidatesPage() {
     try {
       setUploading(true);
       setError('');
-      const parsedCandidate = await candidatesApi.uploadCv(file);
+      const parsedCandidate = await candidatesApi.uploadCv(file, parsingMethod);
       setUploadedCandidate(parsedCandidate);
       await loadCandidates();
     } catch {
@@ -49,7 +58,8 @@ function CandidatesPage() {
     () =>
       [...candidates].sort(
         (left, right) =>
-          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+          new Date(getCandidateCreatedAt(right) ?? 0).getTime() -
+          new Date(getCandidateCreatedAt(left) ?? 0).getTime()
       ),
     [candidates]
   );
@@ -61,8 +71,7 @@ function CandidatesPage() {
           <p className="section-label">Candidate management</p>
           <h1>Candidates</h1>
           <p className="page-description">
-            Upload CVs, review parsed profiles, and open candidate detail views to explore AI
-            matching results.
+            Upload CVs, compare both Azure AI parsing methods, and review parsed profiles side-by-side.
           </p>
         </div>
       </div>
@@ -76,18 +85,29 @@ function CandidatesPage() {
             <p className="page-description">Supported formats: PDF, DOC, and DOCX.</p>
           </div>
         </div>
+        <div className="field method-selector">
+          <span>Parsing method</span>
+          <select
+            className="input"
+            value={parsingMethod}
+            onChange={(event) => setParsingMethod(event.target.value as CvParsingMethod)}
+            disabled={uploading}
+          >
+            <option value="ContentUnderstanding">Content Understanding (AI-powered)</option>
+            <option value="DocumentIntelligence">Document Intelligence (OCR-based)</option>
+          </select>
+        </div>
         <FileUpload onFileSelect={handleUpload} loading={uploading} />
         {uploadedCandidate ? (
-          <div className="highlight-card">
+          <div className="highlight-card stack-gap">
             <div>
               <p className="section-label">Parsed profile</p>
-              <h3>
-                {uploadedCandidate.firstName} {uploadedCandidate.lastName}
-              </h3>
+              <h3>{getCandidateName(uploadedCandidate)}</h3>
+              <p className="method-note">{formatParsingMethod(uploadedCandidate.parsingMethod)}</p>
             </div>
             <p>{uploadedCandidate.summary || 'Candidate summary is not available yet.'}</p>
             <div className="tag-list">
-              {uploadedCandidate.skills.map((skill) => (
+              {getCandidateSkills(uploadedCandidate).map((skill) => (
                 <SkillTag key={skill} skill={skill} />
               ))}
             </div>
@@ -115,6 +135,7 @@ function CandidatesPage() {
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Skills</th>
+                  <th>Parsing method</th>
                   <th>Created</th>
                   <th />
                 </tr>
@@ -122,19 +143,18 @@ function CandidatesPage() {
               <tbody>
                 {sortedCandidates.map((candidate) => (
                   <tr key={candidate.id}>
-                    <td>
-                      {candidate.firstName} {candidate.lastName}
-                    </td>
+                    <td>{getCandidateName(candidate)}</td>
                     <td>{candidate.email || '—'}</td>
                     <td>{candidate.phone || '—'}</td>
                     <td>
                       <div className="tag-list tag-list-compact">
-                        {candidate.skills.slice(0, 3).map((skill) => (
+                        {getCandidateSkills(candidate).slice(0, 3).map((skill) => (
                           <SkillTag key={skill} skill={skill} />
                         ))}
                       </div>
                     </td>
-                    <td>{formatDate(candidate.createdAt)}</td>
+                    <td>{formatParsingMethod(candidate.parsingMethod)}</td>
+                    <td>{formatDate(getCandidateCreatedAt(candidate))}</td>
                     <td>
                       <Link className="button button-secondary" to={`/candidates/${candidate.id}`}>
                         View profile

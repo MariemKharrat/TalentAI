@@ -9,4 +9,7 @@ public sealed class AzureAIOptions
     public string OpenAIEndpoint { get; set; } = string.Empty;
     public string OpenAIKey { get; set; } = string.Empty;
     public string OpenAIDeploymentName { get; set; } = string.Empty;
+    public string ContentUnderstandingEndpoint { get; set; } = string.Empty;
+    public string ContentUnderstandingKey { get; set; } = string.Empty;
+    public string ContentUnderstandingAnalyzerId { get; set; } = string.Empty;
 }

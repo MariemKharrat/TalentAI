@@ -13,17 +13,24 @@ public sealed class CandidatesController(
 {
     [HttpPost("upload-cv")]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<Candidate>> UploadCvAsync(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<Candidate>> UploadCvAsync(
+        IFormFile file,
+        [FromQuery] string method = "ContentUnderstanding",
+        CancellationToken cancellationToken = default)
     {
         if (file is null || file.Length == 0)
         {
             return BadRequest(new { message = "A CV file is required." });
         }
 
+        var parsingMethod = method.Equals("DocumentIntelligence", StringComparison.OrdinalIgnoreCase)
+            ? CvParsingMethod.DocumentIntelligence
+            : CvParsingMethod.ContentUnderstanding;
+
         try
         {
             await using var stream = file.OpenReadStream();
-            var candidate = await cvParsingService.ParseCvAsync(stream, file.FileName, cancellationToken);
+            var candidate = await cvParsingService.ParseCvAsync(stream, file.FileName, parsingMethod, cancellationToken);
             candidate.CvFileName ??= file.FileName;
             candidate.CvContent ??= string.Empty;
 

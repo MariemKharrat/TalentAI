@@ -47,6 +47,9 @@ public class AppDbContext : DbContext
         candidate.Property(entity => entity.Email)
             .HasMaxLength(320);
 
+        candidate.Property(entity => entity.Phone)
+            .HasMaxLength(50);
+
         candidate.Property(entity => entity.Skills)
             .HasMaxLength(4000);
 
@@ -58,6 +61,9 @@ public class AppDbContext : DbContext
 
         candidate.Property(entity => entity.CvContent)
             .HasColumnType("nvarchar(max)");
+
+        candidate.Property(entity => entity.ParsingMethod)
+            .HasMaxLength(100);
 
         candidate.Property(entity => entity.CreatedAtUtc)
             .IsRequired();

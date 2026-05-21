@@ -285,6 +285,16 @@
   font-weight: 600;
 }
 
+.method-selector {
+  max-width: 420px;
+}
+
+.method-note {
+  margin: 0.35rem 0 0;
+  color: #1f6feb;
+  font-weight: 600;
+}
+
 .file-upload {
   border: 2px dashed #9db8df;
   border-radius: 22px;

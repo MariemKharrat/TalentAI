@@ -1,30 +1,87 @@
 import axios from 'axios';
-import { Candidate, Job, JobDescriptionRequest, MatchResult } from '../types';
+import { Candidate, CvParsingMethod, Job, JobDescriptionRequest, MatchResult } from '../types';
 
 const api = axios.create({
   baseURL: 'http://localhost:5000/api',
 });
 
+type CandidateApiResponse = Partial<Candidate> & {
+  fullName?: string;
+  createdAtUtc?: string;
+  cvFileName?: string;
+  skills?: string[] | string | null;
+};
+
+const splitCandidateName = (candidate: CandidateApiResponse) => {
+  if (candidate.firstName || candidate.lastName) {
+    return {
+      firstName: candidate.firstName ?? '',
+      lastName: candidate.lastName ?? '',
+    };
+  }
+
+  const fullName = candidate.fullName?.trim() ?? '';
+  if (!fullName) {
+    return { firstName: '', lastName: '' };
+  }
+
+  const parts = fullName.split(/\s+/);
+  return {
+    firstName: parts[0] ?? '',
+    lastName: parts.slice(1).join(' '),
+  };
+};
+
+const normalizeCandidate = (candidate: CandidateApiResponse): Candidate => {
+  const { firstName, lastName } = splitCandidateName(candidate);
+  const skills = Array.isArray(candidate.skills)
+    ? candidate.skills
+    : (candidate.skills ?? '')
+        .split(',')
+        .map((skill) => skill.trim())
+        .filter(Boolean);
+  const createdAt = candidate.createdAt ?? candidate.createdAtUtc ?? '';
+  const cvFileUrl = candidate.cvFileUrl ?? candidate.cvFileName ?? '';
+
+  return {
+    id: candidate.id ?? '',
+    firstName,
+    lastName,
+    fullName: candidate.fullName ?? `${firstName} ${lastName}`.trim(),
+    email: candidate.email ?? '',
+    phone: candidate.phone ?? '',
+    skills,
+    experience: candidate.experience ?? [],
+    education: candidate.education ?? [],
+    summary: candidate.summary ?? '',
+    cvFileUrl,
+    cvFileName: candidate.cvFileName,
+    createdAt,
+    createdAtUtc: candidate.createdAtUtc,
+    parsingMethod: candidate.parsingMethod,
+  };
+};
+
 export const candidatesApi = {
-  async uploadCv(file: File) {
+  async uploadCv(file: File, method: CvParsingMethod = 'ContentUnderstanding') {
     const formData = new FormData();
     formData.append('file', file);
 
-    const { data } = await api.post<Candidate>('/candidates/upload-cv', formData, {
+    const { data } = await api.post<CandidateApiResponse>(`/candidates/upload-cv?method=${method}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
 
-    return data;
+    return normalizeCandidate(data);
   },
   async getAll() {
-    const { data } = await api.get<Candidate[]>('/candidates');
-    return data;
+    const { data } = await api.get<CandidateApiResponse[]>('/candidates');
+    return data.map(normalizeCandidate);
   },
   async getById(id: string) {
-    const { data } = await api.get<Candidate>(`/candidates/${id}`);
-    return data;
+    const { data } = await api.get<CandidateApiResponse>(`/candidates/${id}`);
+    return normalizeCandidate(data);
   },
   async getMatches(id: string) {
     const { data } = await api.get<MatchResult[]>(`/candidates/${id}/matches`);

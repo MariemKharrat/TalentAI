@@ -16,10 +16,13 @@ export interface Education {
   endDate?: string | null;
 }
 
+export type CvParsingMethod = 'DocumentIntelligence' | 'ContentUnderstanding';
+
 export interface Candidate {
   id: string;
   firstName: string;
   lastName: string;
+  fullName?: string;
   email: string;
   phone: string;
   skills: string[];
@@ -27,7 +30,10 @@ export interface Candidate {
   education: Education[];
   summary: string;
   cvFileUrl: string;
+  cvFileName?: string;
   createdAt: string;
+  createdAtUtc?: string;
+  parsingMethod?: string;
 }
 
 export interface Job {
