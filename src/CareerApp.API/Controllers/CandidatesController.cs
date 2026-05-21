@@ -1,5 +1,6 @@
 using CareerApp.Core.Interfaces;
 using CareerApp.Core.Models;
+using CareerApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CareerApp.API.Controllers;
@@ -9,7 +10,8 @@ namespace CareerApp.API.Controllers;
 public sealed class CandidatesController(
     ICandidateRepository candidateRepository,
     ICvParsingService cvParsingService,
-    IJobMatchingService jobMatchingService) : ControllerBase
+    IJobMatchingService jobMatchingService,
+    BlobStorageService blobStorageService) : ControllerBase
 {
     [HttpPost("upload-cv")]
     [Consumes("multipart/form-data")]
@@ -29,9 +31,13 @@ public sealed class CandidatesController(
 
         try
         {
-            await using var stream = file.OpenReadStream();
-            var candidate = await cvParsingService.ParseCvAsync(stream, file.FileName, parsingMethod, cancellationToken);
+            await using var uploadStream = file.OpenReadStream();
+            var blobUrl = await blobStorageService.UploadCvAsync(uploadStream, file.FileName, cancellationToken);
+
+            await using var parseStream = file.OpenReadStream();
+            var candidate = await cvParsingService.ParseCvAsync(parseStream, file.FileName, parsingMethod, cancellationToken);
             candidate.CvFileName ??= file.FileName;
+            candidate.CvBlobUrl = blobUrl;
             candidate.CvContent ??= string.Empty;
 
             var savedCandidate = await candidateRepository.AddAsync(candidate, cancellationToken);

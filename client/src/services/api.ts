@@ -113,7 +113,15 @@ export const jobsApi = {
     await api.delete(`/jobs/${id}`);
   },
   async generateDescription(request: JobDescriptionRequest) {
-    const { data } = await api.post<{ description: string } | string>('/jobs/generate-description', request);
+    const payload: JobDescriptionRequest = {
+      ...request,
+      employmentType: request.employmentType || 'Full-time',
+      requiredSkills: request.requiredSkills ?? [],
+      preferredSkills: request.preferredSkills ?? [],
+      tone: request.tone || 'Professional and inclusive',
+    };
+
+    const { data } = await api.post<{ description: string } | string>('/jobs/generate-description', payload);
     return typeof data === 'string' ? data : data.description;
   },
   async getCandidates(id: string) {

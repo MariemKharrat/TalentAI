@@ -88,9 +88,19 @@ public sealed class JobsController(
             {
                 Title = request.Title,
                 Department = request.Department ?? string.Empty,
+                Location = request.Location ?? string.Empty,
+                ExperienceLevel = request.ExperienceLevel ?? string.Empty,
+                EmploymentType = string.IsNullOrWhiteSpace(request.EmploymentType) ? "Full-time" : request.EmploymentType,
+                RequiredSkills = request.RequiredSkills ?? [],
+                PreferredSkills = request.PreferredSkills ?? [],
                 Responsibilities = request.Responsibilities ?? request.Summary ?? string.Empty,
                 Requirements = request.Requirements ?? string.Empty,
-                PolicyContext = request.PolicyContext ?? string.Empty
+                TeamSize = request.TeamSize ?? string.Empty,
+                ReportingTo = request.ReportingTo ?? string.Empty,
+                SalaryRange = request.SalaryRange ?? string.Empty,
+                Benefits = request.Benefits ?? string.Empty,
+                PolicyContext = request.PolicyContext ?? string.Empty,
+                Tone = string.IsNullOrWhiteSpace(request.Tone) ? "Professional and inclusive" : request.Tone
             });
             return Ok(new JobDescriptionResponse { Description = description });
         }

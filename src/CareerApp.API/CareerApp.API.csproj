@@ -11,12 +11,6 @@
     <PackageReference Include="Azure.AI.OpenAI" Version="2.*" />
     <PackageReference Include="Azure.AI.FormRecognizer" Version="4.*" />
     <PackageReference Include="Azure.Identity" Version="1.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.*" />
   </ItemGroup>
 
   <ItemGroup>

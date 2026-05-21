@@ -50,9 +50,19 @@ function JobDetail() {
       const description = await jobsApi.generateDescription({
         title: job.title,
         department: job.department,
-        requiredSkills: job.requiredSkills,
+        location: job.location,
         experienceLevel: job.experienceLevel,
+        employmentType: 'Full-time',
+        requiredSkills: job.requiredSkills,
+        preferredSkills: job.preferredSkills,
+        responsibilities: job.description,
+        requirements: '',
+        teamSize: '',
+        reportingTo: '',
+        salaryRange: '',
+        benefits: '',
         policyContext: 'Create an inclusive, concise role summary for recruiters.',
+        tone: 'Professional and inclusive',
       });
       setJob({ ...job, description });
     } catch {

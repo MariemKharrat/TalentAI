@@ -3,19 +3,31 @@ using CareerApp.Infrastructure.Configuration;
 using CareerApp.Infrastructure.Data;
 using CareerApp.Infrastructure.Repositories;
 using CareerApp.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configuration
 builder.Services.Configure<AzureAIOptions>(builder.Configuration.GetSection(AzureAIOptions.SectionName));
+builder.Services.Configure<CosmosDbOptions>(builder.Configuration.GetSection(CosmosDbOptions.SectionName));
+builder.Services.Configure<BlobStorageOptions>(builder.Configuration.GetSection(BlobStorageOptions.SectionName));
+
+// Cosmos DB
+builder.Services.AddSingleton<CosmosDbService>();
+
+// Blob Storage
+builder.Services.AddSingleton<BlobStorageService>();
+
+// Repositories
+builder.Services.AddScoped<ICandidateRepository, CandidateRepository>();
+builder.Services.AddScoped<IJobRepository, JobRepository>();
+
+// AI Services
 builder.Services.AddHttpClient<ContentUnderstandingCvParser>();
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<ContentUnderstandingCvParser>();
 builder.Services.AddScoped<ICvParsingService, CvParsingService>();
 builder.Services.AddScoped<IJobMatchingService, JobMatchingService>();
 builder.Services.AddScoped<IJobDescriptionGenerator, JobDescriptionGeneratorService>();
-builder.Services.AddScoped<ICandidateRepository, CandidateRepository>();
-builder.Services.AddScoped<IJobRepository, JobRepository>();
+
 builder.Services.AddControllers();
 builder.Services.AddCors(options =>
 {
@@ -27,10 +39,15 @@ builder.Services.AddCors(options =>
     });
 });
 builder.Services.AddOpenApi();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Initialize Cosmos DB containers
+using (var scope = app.Services.CreateScope())
+{
+    var cosmosDb = scope.ServiceProvider.GetRequiredService<CosmosDbService>();
+    await cosmosDb.InitializeAsync();
+}
 
 app.UseExceptionHandler(errorApp =>
 {
@@ -44,8 +61,6 @@ app.UseExceptionHandler(errorApp =>
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.UseSwagger();
-    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();

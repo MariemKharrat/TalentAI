@@ -6,7 +6,7 @@ using CareerApp.Core.Interfaces;
 using CareerApp.Core.Models;
 using CareerApp.Infrastructure.Configuration;
 using CareerApp.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
 
@@ -21,18 +21,18 @@ public class JobMatchingService : IJobMatchingService
 
     private readonly ICandidateRepository _candidateRepository;
     private readonly IJobRepository _jobRepository;
-    private readonly AppDbContext _dbContext;
+    private readonly CosmosDbService _cosmosDb;
     private readonly AzureAIOptions _options;
 
     public JobMatchingService(
         ICandidateRepository candidateRepository,
         IJobRepository jobRepository,
-        AppDbContext dbContext,
+        CosmosDbService cosmosDb,
         IConfiguration configuration)
     {
         _candidateRepository = candidateRepository;
         _jobRepository = jobRepository;
-        _dbContext = dbContext;
+        _cosmosDb = cosmosDb;
         _options = LoadOptions(configuration);
     }
 
@@ -79,24 +79,23 @@ public class JobMatchingService : IJobMatchingService
         return results.OrderByDescending(result => result.Score).ToList();
     }
 
-    public async Task<IReadOnlyCollection<MatchResult>> GetMatchesForCandidateAsync(Guid candidateId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyCollection<MatchResult>> GetMatchesForCandidateAsync(Guid candidateId, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.MatchResults
-            .AsNoTracking()
-            .Where(match => match.CandidateId == candidateId)
-            .OrderByDescending(match => match.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.candidateId = @candidateId ORDER BY c.createdAt DESC")
+            .WithParameter("@candidateId", candidateId.ToString());
+
+        return QueryMatchResultsAsync(query, new QueryRequestOptions
+        {
+            PartitionKey = new PartitionKey(candidateId.ToString())
+        }, cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<MatchResult>> GetMatchesForJobAsync(Guid jobId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyCollection<MatchResult>> GetMatchesForJobAsync(Guid jobId, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.MatchResults
-            .AsNoTracking()
-            .Where(match => match.JobId == jobId)
-            .OrderByDescending(match => match.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.jobId = @jobId ORDER BY c.createdAt DESC")
+            .WithParameter("@jobId", jobId.ToString());
+
+        return QueryMatchResultsAsync(query, requestOptions: null, cancellationToken);
     }
 
     private async Task<MatchResult> BuildAndPersistMatchResultAsync(Candidate candidate, Job job, CancellationToken cancellationToken)
@@ -128,10 +127,29 @@ public class JobMatchingService : IJobMatchingService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        await _dbContext.MatchResults.AddAsync(matchResult, cancellationToken).ConfigureAwait(false);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await _cosmosDb.MatchResults.CreateItemAsync(
+            matchResult,
+            new PartitionKey(matchResult.CandidateId.ToString()),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return matchResult;
+    }
+
+    private async Task<IReadOnlyCollection<MatchResult>> QueryMatchResultsAsync(
+        QueryDefinition query,
+        QueryRequestOptions? requestOptions,
+        CancellationToken cancellationToken)
+    {
+        var iterator = _cosmosDb.MatchResults.GetItemQueryIterator<MatchResult>(query, requestOptions: requestOptions);
+        var results = new List<MatchResult>();
+
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(cancellationToken).ConfigureAwait(false);
+            results.AddRange(response);
+        }
+
+        return results;
     }
 
     private static MatchEvaluation EvaluateMatch(Candidate candidate, Job job)

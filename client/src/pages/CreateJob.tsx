@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useState } from 'react';
+import { ChangeEvent, FormEvent, KeyboardEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import SkillTag from '../components/SkillTag';
 import { jobsApi } from '../services/api';
@@ -7,23 +7,42 @@ interface JobFormState {
   title: string;
   department: string;
   description: string;
-  experienceLevel: string;
   location: string;
-  policyContext: string;
+  experienceLevel: string;
+  employmentType: string;
   requiredSkills: string[];
   preferredSkills: string[];
+  responsibilities: string;
+  requirements: string;
+  teamSize: string;
+  reportingTo: string;
+  salaryRange: string;
+  benefits: string;
+  policyContext: string;
+  tone: string;
 }
 
 const initialState: JobFormState = {
   title: '',
   department: '',
   description: '',
-  experienceLevel: '',
   location: '',
-  policyContext: 'Use inclusive language and keep the role clear and candidate-friendly.',
+  experienceLevel: 'Mid-level',
+  employmentType: 'Full-time',
   requiredSkills: [],
   preferredSkills: [],
+  responsibilities: '',
+  requirements: '',
+  teamSize: '',
+  reportingTo: '',
+  salaryRange: '',
+  benefits: '',
+  policyContext: 'Use inclusive language and keep the role clear and candidate-friendly.',
+  tone: 'Professional and inclusive',
 };
+
+type SkillKey = 'requiredSkills' | 'preferredSkills';
+type TextFieldKey = Exclude<keyof JobFormState, SkillKey>;
 
 function CreateJob() {
   const navigate = useNavigate();
@@ -34,35 +53,47 @@ function CreateJob() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
 
-  const addSkill = (value: string, key: 'requiredSkills' | 'preferredSkills') => {
-    const trimmedValue = value.trim();
-    if (!trimmedValue || form[key].includes(trimmedValue)) {
+  const addSkills = (value: string, key: SkillKey) => {
+    const nextSkills = value
+      .split(',')
+      .map((skill) => skill.trim())
+      .filter(Boolean);
+
+    if (nextSkills.length === 0) {
       return;
     }
 
     setForm((current) => ({
       ...current,
-      [key]: [...current[key], trimmedValue],
+      [key]: Array.from(new Set([...current[key], ...nextSkills])),
     }));
   };
 
-  const removeSkill = (value: string, key: 'requiredSkills' | 'preferredSkills') => {
+  const removeSkill = (value: string, key: SkillKey) => {
     setForm((current) => ({
       ...current,
       [key]: current[key].filter((skill) => skill !== value),
     }));
   };
 
-  const handleSkillKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>,
-    key: 'requiredSkills' | 'preferredSkills',
-    reset: () => void
-  ) => {
+  const handleSkillKeyDown = (event: KeyboardEvent<HTMLInputElement>, key: SkillKey, reset: () => void) => {
     if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault();
-      addSkill((event.target as HTMLInputElement).value, key);
+      addSkills((event.target as HTMLInputElement).value, key);
       reset();
     }
+  };
+
+  const handleSkillBlur = (value: string, key: SkillKey, reset: () => void) => {
+    addSkills(value, key);
+    reset();
+  };
+
+  const handleInputChange = (key: TextFieldKey) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setForm((current) => ({
+      ...current,
+      [key]: event.target.value,
+    }));
   };
 
   const handleGenerateDescription = async () => {
@@ -72,9 +103,19 @@ function CreateJob() {
       const description = await jobsApi.generateDescription({
         title: form.title,
         department: form.department,
-        requiredSkills: form.requiredSkills,
+        location: form.location,
         experienceLevel: form.experienceLevel,
+        employmentType: form.employmentType,
+        requiredSkills: form.requiredSkills,
+        preferredSkills: form.preferredSkills,
+        responsibilities: form.responsibilities,
+        requirements: form.requirements,
+        teamSize: form.teamSize,
+        reportingTo: form.reportingTo,
+        salaryRange: form.salaryRange,
+        benefits: form.benefits,
         policyContext: form.policyContext,
+        tone: form.tone,
       });
       setForm((current) => ({ ...current, description }));
     } catch {
@@ -114,7 +155,7 @@ function CreateJob() {
         <div>
           <Link to="/jobs" className="back-link">← Back to jobs</Link>
           <h1>Create job</h1>
-          <p className="page-description">Define the role, add skill requirements, and optionally generate an AI description before saving.</p>
+          <p className="page-description">Define the role, add rich hiring context, and generate a stronger AI description before saving.</p>
         </div>
       </div>
 
@@ -123,45 +164,53 @@ function CreateJob() {
       <form className="section-card form-grid" onSubmit={handleSubmit}>
         <label className="field">
           <span>Title</span>
-          <input
-            className="input"
-            value={form.title}
-            onChange={(event) => setForm({ ...form, title: event.target.value })}
-            placeholder="Senior AI Recruiter"
-            required
-          />
+          <input className="input" value={form.title} onChange={handleInputChange('title')} placeholder="Senior AI Recruiter" required />
         </label>
 
         <label className="field">
           <span>Department</span>
-          <input
-            className="input"
-            value={form.department}
-            onChange={(event) => setForm({ ...form, department: event.target.value })}
-            placeholder="Talent Acquisition"
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Experience level</span>
-          <input
-            className="input"
-            value={form.experienceLevel}
-            onChange={(event) => setForm({ ...form, experienceLevel: event.target.value })}
-            placeholder="Mid-Senior"
-            required
-          />
+          <input className="input" value={form.department} onChange={handleInputChange('department')} placeholder="Talent Acquisition" required />
         </label>
 
         <label className="field">
           <span>Location</span>
-          <input
-            className="input"
-            value={form.location}
-            onChange={(event) => setForm({ ...form, location: event.target.value })}
-            placeholder="Remote / London"
-          />
+          <input className="input" value={form.location} onChange={handleInputChange('location')} placeholder="Remote / London" />
+        </label>
+
+        <label className="field">
+          <span>Experience level</span>
+          <select className="input" value={form.experienceLevel} onChange={handleInputChange('experienceLevel')}>
+            <option value="Junior">Junior</option>
+            <option value="Mid-level">Mid-level</option>
+            <option value="Senior">Senior</option>
+            <option value="Lead">Lead</option>
+            <option value="Principal">Principal</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Employment type</span>
+          <select className="input" value={form.employmentType} onChange={handleInputChange('employmentType')}>
+            <option value="Full-time">Full-time</option>
+            <option value="Part-time">Part-time</option>
+            <option value="Contract">Contract</option>
+            <option value="Temporary">Temporary</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Team size</span>
+          <input className="input" value={form.teamSize} onChange={handleInputChange('teamSize')} placeholder="8-person engineering squad" />
+        </label>
+
+        <label className="field">
+          <span>Reporting to</span>
+          <input className="input" value={form.reportingTo} onChange={handleInputChange('reportingTo')} placeholder="Director of Engineering" />
+        </label>
+
+        <label className="field">
+          <span>Salary range</span>
+          <input className="input" value={form.salaryRange} onChange={handleInputChange('salaryRange')} placeholder="$110,000 - $135,000" />
         </label>
 
         <label className="field field-full">
@@ -171,7 +220,8 @@ function CreateJob() {
             value={requiredSkillInput}
             onChange={(event) => setRequiredSkillInput(event.target.value)}
             onKeyDown={(event) => handleSkillKeyDown(event, 'requiredSkills', () => setRequiredSkillInput(''))}
-            placeholder="Type a skill and press Enter"
+            onBlur={() => handleSkillBlur(requiredSkillInput, 'requiredSkills', () => setRequiredSkillInput(''))}
+            placeholder="Type one or more skills separated by commas"
           />
           <div className="tag-list">
             {form.requiredSkills.map((skill) => (
@@ -189,7 +239,8 @@ function CreateJob() {
             value={preferredSkillInput}
             onChange={(event) => setPreferredSkillInput(event.target.value)}
             onKeyDown={(event) => handleSkillKeyDown(event, 'preferredSkills', () => setPreferredSkillInput(''))}
-            placeholder="Optional skills to highlight"
+            onBlur={() => handleSkillBlur(preferredSkillInput, 'preferredSkills', () => setPreferredSkillInput(''))}
+            placeholder="Optional skills separated by commas"
           />
           <div className="tag-list">
             {form.preferredSkills.map((skill) => (
@@ -201,12 +252,46 @@ function CreateJob() {
         </label>
 
         <label className="field field-full">
-          <span>Policy context for AI description</span>
-          <input
-            className="input"
+          <span>Responsibilities</span>
+          <textarea
+            className="input textarea"
+            value={form.responsibilities}
+            onChange={handleInputChange('responsibilities')}
+            placeholder="Summarize the scope, outcomes, and day-to-day responsibilities"
+            rows={5}
+          />
+        </label>
+
+        <label className="field field-full">
+          <span>Requirements</span>
+          <textarea
+            className="input textarea"
+            value={form.requirements}
+            onChange={handleInputChange('requirements')}
+            placeholder="List mandatory qualifications, certifications, or experience"
+            rows={5}
+          />
+        </label>
+
+        <label className="field field-full">
+          <span>Benefits</span>
+          <textarea
+            className="input textarea"
+            value={form.benefits}
+            onChange={handleInputChange('benefits')}
+            placeholder="Highlight benefits, flexibility, learning, and other perks"
+            rows={4}
+          />
+        </label>
+
+        <label className="field field-full">
+          <span>Policy context</span>
+          <textarea
+            className="input textarea"
             value={form.policyContext}
-            onChange={(event) => setForm({ ...form, policyContext: event.target.value })}
-            placeholder="Describe the tone or policy context"
+            onChange={handleInputChange('policyContext')}
+            placeholder="Provide inclusion, compliance, or organization-specific guidance for the AI"
+            rows={4}
           />
         </label>
 
@@ -215,15 +300,15 @@ function CreateJob() {
           <textarea
             className="input textarea"
             value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
+            onChange={handleInputChange('description')}
             placeholder="Add a description or generate one with AI"
-            rows={8}
+            rows={10}
           />
         </label>
 
         <div className="field field-full button-row">
-          <button className="button button-secondary" type="button" onClick={handleGenerateDescription} disabled={generating || !form.title}>
-            {generating ? 'Generating...' : 'Generate AI Description'}
+          <button className="button button-secondary" type="button" onClick={handleGenerateDescription} disabled={generating || !form.title || !form.department}>
+            {generating ? 'Generating...' : 'Generate with AI'}
           </button>
           <button className="button" type="submit" disabled={loading}>
             {loading ? 'Saving...' : 'Save Job'}

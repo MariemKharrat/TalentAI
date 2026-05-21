@@ -70,7 +70,17 @@ export interface MatchResult {
 export interface JobDescriptionRequest {
   title: string;
   department: string;
-  requiredSkills: string[];
+  location: string;
   experienceLevel: string;
+  employmentType: string;
+  requiredSkills: string[];
+  preferredSkills: string[];
+  responsibilities: string;
+  requirements: string;
+  teamSize: string;
+  reportingTo: string;
+  salaryRange: string;
+  benefits: string;
   policyContext: string;
+  tone: string;
 }

@@ -1,83 +1,105 @@
 using CareerApp.Core.Interfaces;
 using CareerApp.Core.Models;
 using CareerApp.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Azure.Cosmos;
 
 namespace CareerApp.Infrastructure.Repositories;
 
 public class JobRepository : IJobRepository
 {
-    private readonly AppDbContext _dbContext;
+    private readonly CosmosDbService _cosmosDb;
 
-    public JobRepository(AppDbContext dbContext)
+    public JobRepository(CosmosDbService cosmosDb)
     {
-        _dbContext = dbContext;
+        _cosmosDb = cosmosDb;
     }
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Jobs
-            .AsNoTracking()
-            .SingleOrDefaultAsync(job => job.Id == id, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            var response = await _cosmosDb.Jobs.ReadItemAsync<Job>(
+                id.ToString(), new PartitionKey(id.ToString()), cancellationToken: cancellationToken);
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyCollection<Job>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Jobs
-            .AsNoTracking()
-            .OrderByDescending(job => job.UpdatedAtUtc)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var query = new QueryDefinition("SELECT * FROM c ORDER BY c.updatedAtUtc DESC");
+        var iterator = _cosmosDb.Jobs.GetItemQueryIterator<Job>(query);
+
+        var results = new List<Job>();
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(response);
+        }
+
+        return results;
     }
 
     public async Task<IReadOnlyCollection<Job>> GetAllActiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Jobs
-            .AsNoTracking()
-            .Where(job => job.IsActive)
-            .OrderByDescending(job => job.UpdatedAtUtc)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.isActive = true ORDER BY c.updatedAtUtc DESC");
+        var iterator = _cosmosDb.Jobs.GetItemQueryIterator<Job>(query);
+
+        var results = new List<Job>();
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(response);
+        }
+
+        return results;
     }
 
     public async Task<Job> AddAsync(Job job, CancellationToken cancellationToken = default)
     {
+        if (job.Id == Guid.Empty)
+        {
+            job.Id = Guid.NewGuid();
+        }
+
         var utcNow = DateTime.UtcNow;
         job.CreatedAtUtc = job.CreatedAtUtc == default ? utcNow : job.CreatedAtUtc;
         job.UpdatedAtUtc = utcNow;
 
-        await _dbContext.Jobs.AddAsync(job, cancellationToken).ConfigureAwait(false);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return job;
+        var response = await _cosmosDb.Jobs.CreateItemAsync(
+            job, new PartitionKey(job.Id.ToString()), cancellationToken: cancellationToken);
+        return response.Resource;
     }
 
     public async Task<Job?> UpdateAsync(Job job, CancellationToken cancellationToken = default)
     {
-        var exists = await _dbContext.Jobs.AnyAsync(item => item.Id == job.Id, cancellationToken).ConfigureAwait(false);
-        if (!exists)
+        try
+        {
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            var response = await _cosmosDb.Jobs.ReplaceItemAsync(
+                job, job.Id.ToString(), new PartitionKey(job.Id.ToString()), cancellationToken: cancellationToken);
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
         }
-
-        job.UpdatedAtUtc = DateTime.UtcNow;
-        _dbContext.Jobs.Update(job);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return job;
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs.FindAsync([id], cancellationToken).ConfigureAwait(false);
-        if (job is null)
+        try
+        {
+            await _cosmosDb.Jobs.DeleteItemAsync<Job>(
+                id.ToString(), new PartitionKey(id.ToString()), cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return false;
         }
-
-        _dbContext.Jobs.Remove(job);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return true;
     }
 }

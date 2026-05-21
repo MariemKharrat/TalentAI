@@ -1,56 +1,73 @@
 using CareerApp.Core.Interfaces;
 using CareerApp.Core.Models;
 using CareerApp.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Azure.Cosmos;
 
 namespace CareerApp.Infrastructure.Repositories;
 
 public class CandidateRepository : ICandidateRepository
 {
-    private readonly AppDbContext _dbContext;
+    private readonly CosmosDbService _cosmosDb;
 
-    public CandidateRepository(AppDbContext dbContext)
+    public CandidateRepository(CosmosDbService cosmosDb)
     {
-        _dbContext = dbContext;
+        _cosmosDb = cosmosDb;
     }
 
     public async Task<Candidate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Candidates
-            .AsNoTracking()
-            .SingleOrDefaultAsync(candidate => candidate.Id == id, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            var response = await _cosmosDb.Candidates.ReadItemAsync<Candidate>(
+                id.ToString(), new PartitionKey(id.ToString()), cancellationToken: cancellationToken);
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyCollection<Candidate>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Candidates
-            .AsNoTracking()
-            .OrderByDescending(candidate => candidate.CreatedAtUtc)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var query = new QueryDefinition("SELECT * FROM c ORDER BY c.createdAtUtc DESC");
+        var iterator = _cosmosDb.Candidates.GetItemQueryIterator<Candidate>(query);
+
+        var results = new List<Candidate>();
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(response);
+        }
+
+        return results;
     }
 
     public async Task<Candidate> AddAsync(Candidate candidate, CancellationToken cancellationToken = default)
     {
+        if (candidate.Id == Guid.Empty)
+        {
+            candidate.Id = Guid.NewGuid();
+        }
+
         candidate.CreatedAtUtc = candidate.CreatedAtUtc == default ? DateTime.UtcNow : candidate.CreatedAtUtc;
 
-        await _dbContext.Candidates.AddAsync(candidate, cancellationToken).ConfigureAwait(false);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return candidate;
+        var response = await _cosmosDb.Candidates.CreateItemAsync(
+            candidate, new PartitionKey(candidate.Id.ToString()), cancellationToken: cancellationToken);
+        return response.Resource;
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var candidate = await _dbContext.Candidates.FindAsync([id], cancellationToken).ConfigureAwait(false);
-        if (candidate is null)
+        try
+        {
+            await _cosmosDb.Candidates.DeleteItemAsync<Candidate>(
+                id.ToString(), new PartitionKey(id.ToString()), cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return false;
         }
-
-        _dbContext.Candidates.Remove(candidate);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return true;
     }
 }

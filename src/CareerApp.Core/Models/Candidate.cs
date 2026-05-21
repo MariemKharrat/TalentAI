@@ -9,6 +9,7 @@ public sealed class Candidate
     public string? Skills { get; set; }
     public string? Summary { get; set; }
     public string? CvFileName { get; set; }
+    public string? CvBlobUrl { get; set; }
     public string? CvContent { get; set; }
     public string ParsingMethod { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
