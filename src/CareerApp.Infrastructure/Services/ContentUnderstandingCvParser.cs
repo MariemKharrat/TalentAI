@@ -121,23 +121,32 @@ public sealed class ContentUnderstandingCvParser
 
     private static string ExtractTextFromPdf(byte[] documentBytes)
     {
-        // For PDF, return a marker — the Document Intelligence path handles PDFs better
-        // This fallback just extracts embedded text strings
-        var text = Encoding.UTF8.GetString(documentBytes);
-        var sb = new StringBuilder();
-        
-        // Extract text between BT and ET operators (basic PDF text extraction)
-        var matches = Regex.Matches(text, @"\(([^)]+)\)", RegexOptions.Compiled);
-        foreach (Match match in matches)
+        try
         {
-            var segment = match.Groups[1].Value;
-            if (segment.Length > 2 && segment.Any(char.IsLetter))
+            using var pdfDocument = UglyToad.PdfPig.PdfDocument.Open(documentBytes);
+            var sb = new StringBuilder();
+            foreach (var page in pdfDocument.GetPages())
             {
-                sb.Append(segment).Append(' ');
+                sb.AppendLine(page.Text);
             }
+            return sb.ToString();
         }
-
-        return sb.Length > 50 ? sb.ToString() : text;
+        catch
+        {
+            // If PdfPig fails, return raw text extraction as last resort
+            var text = Encoding.UTF8.GetString(documentBytes);
+            var sb = new StringBuilder();
+            var matches = Regex.Matches(text, @"\(([^)]+)\)", RegexOptions.Compiled);
+            foreach (Match match in matches)
+            {
+                var segment = match.Groups[1].Value;
+                if (segment.Length > 2 && segment.Any(char.IsLetter))
+                {
+                    sb.Append(segment).Append(' ');
+                }
+            }
+            return sb.Length > 50 ? sb.ToString() : text;
+        }
     }
 
     /// <summary>
@@ -166,15 +175,32 @@ public sealed class ContentUnderstandingCvParser
 Return ONLY a valid JSON object with this exact schema (no markdown, no explanation):
 {
   ""fullName"": ""string"",
-  ""email"": ""string"",
-  ""phone"": ""string"",
-  ""summary"": ""A 2-3 sentence professional summary"",
-  ""skills"": [""skill1"", ""skill2""],
-  ""experience"": [{""company"": ""string"", ""title"": ""string"", ""description"": ""brief description""}],
-  ""education"": [{""institution"": ""string"", ""degree"": ""string"", ""fieldOfStudy"": ""string""}]
-}";
+  ""email"": ""string or empty"",
+  ""phone"": ""string or empty"",
+  ""summary"": ""A 2-3 sentence professional summary based on the CV content"",
+  ""skills"": [""skill1"", ""skill2"", ...],
+  ""experience"": [
+    {
+      ""company"": ""company name"",
+      ""title"": ""job title"",
+      ""startDate"": ""start date or empty"",
+      ""endDate"": ""end date or Present"",
+      ""description"": ""brief description of role and achievements""
+    }
+  ],
+  ""education"": [
+    {
+      ""institution"": ""university/school name"",
+      ""degree"": ""degree type (e.g. BSc, MSc, PhD)"",
+      ""fieldOfStudy"": ""field/major"",
+      ""startDate"": ""start date or empty"",
+      ""endDate"": ""end date or empty""
+    }
+  ]
+}
+Extract ALL work experiences and education entries from the CV. Be thorough.";
 
-            var trimmedCv = cvText.Length > 8000 ? cvText[..8000] : cvText;
+            var trimmedCv = cvText.Length > 15000 ? cvText[..15000] : cvText;
 
             var response = await chatClient.CompleteChatAsync(
                 [
@@ -227,6 +253,8 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no explanat
                 {
                     Company = e.TryGetProperty("company", out var c) ? c.GetString() ?? "" : "",
                     Title = e.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    StartDate = e.TryGetProperty("startDate", out var sd) ? sd.GetString() ?? "" : "",
+                    EndDate = e.TryGetProperty("endDate", out var ed) ? ed.GetString() ?? "" : "",
                     Description = e.TryGetProperty("description", out var d) ? d.GetString() ?? "" : ""
                 }).ToList();
         }
@@ -239,7 +267,9 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no explanat
                 {
                     Institution = e.TryGetProperty("institution", out var i) ? i.GetString() ?? "" : "",
                     Degree = e.TryGetProperty("degree", out var dg) ? dg.GetString() ?? "" : "",
-                    FieldOfStudy = e.TryGetProperty("fieldOfStudy", out var f) ? f.GetString() ?? "" : ""
+                    FieldOfStudy = e.TryGetProperty("fieldOfStudy", out var f) ? f.GetString() ?? "" : "",
+                    StartDate = e.TryGetProperty("startDate", out var sd) ? sd.GetString() ?? "" : "",
+                    EndDate = e.TryGetProperty("endDate", out var ed) ? ed.GetString() ?? "" : ""
                 }).ToList();
         }
 
@@ -486,6 +516,8 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no explanat
             {
                 Company = GetFieldValue(experienceObject, "company") ?? GetFieldValue(experienceObject, "organization") ?? string.Empty,
                 Title = GetFieldValue(experienceObject, "title") ?? GetFieldValue(experienceObject, "role") ?? string.Empty,
+                StartDate = GetFieldValue(experienceObject, "startDate") ?? string.Empty,
+                EndDate = GetFieldValue(experienceObject, "endDate") ?? string.Empty,
                 Description = GetFieldValue(experienceObject, "description") ?? string.Empty
             });
         }
@@ -514,7 +546,9 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no explanat
             {
                 Institution = GetFieldValue(educationObject, "institution") ?? GetFieldValue(educationObject, "school") ?? string.Empty,
                 Degree = GetFieldValue(educationObject, "degree") ?? string.Empty,
-                FieldOfStudy = GetFieldValue(educationObject, "fieldOfStudy") ?? GetFieldValue(educationObject, "major") ?? string.Empty
+                FieldOfStudy = GetFieldValue(educationObject, "fieldOfStudy") ?? GetFieldValue(educationObject, "major") ?? string.Empty,
+                StartDate = GetFieldValue(educationObject, "startDate") ?? string.Empty,
+                EndDate = GetFieldValue(educationObject, "endDate") ?? string.Empty
             });
         }
 
@@ -548,7 +582,25 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no explanat
             CvFileName = fileName,
             CvContent = $"[Parsed via Content Understanding] {result.Summary}",
             ParsingMethod = nameof(CvParsingMethod.ContentUnderstanding),
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
+            Experience = result.Experience.Select(e => new WorkExperience
+            {
+                Id = Guid.NewGuid(),
+                Company = e.Company,
+                Title = e.Title,
+                StartDate = e.StartDate,
+                EndDate = e.EndDate,
+                Description = e.Description
+            }).ToList(),
+            Education = result.Education.Select(e => new Education
+            {
+                Id = Guid.NewGuid(),
+                Institution = e.Institution,
+                Degree = e.Degree,
+                FieldOfStudy = e.FieldOfStudy,
+                StartDate = e.StartDate,
+                EndDate = e.EndDate
+            }).ToList()
         };
     }
 }
@@ -568,6 +620,8 @@ internal sealed class ContentUnderstandingExperience
 {
     public string Company { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
+    public string StartDate { get; set; } = string.Empty;
+    public string EndDate { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 }
 
@@ -576,4 +630,6 @@ internal sealed class ContentUnderstandingEducation
     public string Institution { get; set; } = string.Empty;
     public string Degree { get; set; } = string.Empty;
     public string FieldOfStudy { get; set; } = string.Empty;
+    public string StartDate { get; set; } = string.Empty;
+    public string EndDate { get; set; } = string.Empty;
 }

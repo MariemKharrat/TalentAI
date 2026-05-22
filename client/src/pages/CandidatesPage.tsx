@@ -59,6 +59,16 @@ function CandidatesPage() {
     }
   };
 
+  const deleteCandidate = async (candidate: Candidate) => {
+    if (!window.confirm(`Delete "${getCandidateName(candidate)}"? This cannot be undone.`)) return;
+    try {
+      await candidatesApi.delete(candidate.id);
+      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
+    } catch {
+      setError('Failed to delete candidate.');
+    }
+  };
+
   const sortedCandidates = useMemo(
     () =>
       [...candidates].sort(
@@ -142,7 +152,7 @@ function CandidatesPage() {
                   <th>Skills</th>
                   <th>Parsing method</th>
                   <th>Created</th>
-                  <th />
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,9 +171,17 @@ function CandidatesPage() {
                     <td>{formatParsingMethod(candidate.parsingMethod)}</td>
                     <td>{formatDate(getCandidateCreatedAt(candidate))}</td>
                     <td>
-                      <Link className="button button-secondary" to={`/candidates/${candidate.id}`}>
-                        View profile
-                      </Link>
+                      <div className="button-row">
+                        <Link className="button button-secondary" to={`/candidates/${candidate.id}`}>
+                          View profile
+                        </Link>
+                        <button
+                          className="button button-small button-danger"
+                          onClick={() => deleteCandidate(candidate)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

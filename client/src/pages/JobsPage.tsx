@@ -54,6 +54,16 @@ function JobsPage() {
     }
   };
 
+  const deleteJob = async (job: Job) => {
+    if (!window.confirm(`Delete "${job.title}"? This cannot be undone.`)) return;
+    try {
+      await jobsApi.delete(job.id);
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
+    } catch {
+      setError('Failed to delete job.');
+    }
+  };
+
   return (
     <div className="page stack-gap-lg">
       <div className="page-header">
@@ -122,6 +132,12 @@ function JobsPage() {
                   onClick={() => toggleStatus(job)}
                 >
                   {job.isActive ? 'Close role' : 'Reactivate'}
+                </button>
+                <button
+                  className="button button-small button-danger"
+                  onClick={() => deleteJob(job)}
+                >
+                  Delete
                 </button>
               </div>
             </div>
