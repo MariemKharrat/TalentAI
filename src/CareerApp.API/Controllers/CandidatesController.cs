@@ -41,7 +41,19 @@ public sealed class CandidatesController(
             candidate.CvContent ??= string.Empty;
 
             var savedCandidate = await candidateRepository.AddAsync(candidate, cancellationToken);
-            return CreatedAtAction(nameof(GetCandidateByIdAsync), new { id = savedCandidate.Id }, savedCandidate);
+
+            // Save file locally for CV viewer when blob storage is not configured
+            if (!blobStorageService.IsConfigured)
+            {
+                var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", savedCandidate.Id.ToString());
+                Directory.CreateDirectory(uploadDir);
+                var localPath = Path.Combine(uploadDir, file.FileName);
+                await using var localStream = file.OpenReadStream();
+                await using var fileWriter = System.IO.File.Create(localPath);
+                await localStream.CopyToAsync(fileWriter, cancellationToken);
+            }
+
+            return Created($"/api/candidates/{savedCandidate.Id}", savedCandidate);
         }
         catch (InvalidDataException exception)
         {
@@ -85,5 +97,51 @@ public sealed class CandidatesController(
     {
         var deleted = await candidateRepository.DeleteAsync(id, cancellationToken);
         return deleted ? NoContent() : NotFound();
+    }
+
+    [HttpGet("{id:guid}/cv")]
+    public async Task<IActionResult> DownloadCvAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var candidate = await candidateRepository.GetByIdAsync(id, cancellationToken);
+        if (candidate is null)
+        {
+            return NotFound();
+        }
+
+        // Try blob storage first
+        if (blobStorageService.IsConfigured && !string.IsNullOrWhiteSpace(candidate.CvBlobUrl) && !candidate.CvBlobUrl.StartsWith("local://"))
+        {
+            var stream = await blobStorageService.DownloadCvAsync(candidate.CvBlobUrl, cancellationToken);
+            if (stream is not null)
+            {
+                var contentType = GetContentType(candidate.CvFileName ?? "file.pdf");
+                Response.Headers["Content-Disposition"] = $"inline; filename=\"{candidate.CvFileName}\"";
+                return File(stream, contentType);
+            }
+        }
+
+        // Try local file storage
+        var localPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads", id.ToString(), candidate.CvFileName ?? "cv");
+        if (System.IO.File.Exists(localPath))
+        {
+            var stream = System.IO.File.OpenRead(localPath);
+            var contentType = GetContentType(candidate.CvFileName ?? "file.pdf");
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{candidate.CvFileName}\"";
+            return File(stream, contentType);
+        }
+
+        return NotFound(new { message = "CV file not found." });
+    }
+
+    private static string GetContentType(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc" => "application/msword",
+            _ => "application/octet-stream"
+        };
     }
 }

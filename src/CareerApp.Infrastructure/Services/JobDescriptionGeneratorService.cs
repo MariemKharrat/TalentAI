@@ -43,17 +43,31 @@ public class JobDescriptionGeneratorService : IJobDescriptionGenerator
         var chatClient = CreateChatClient();
 
         var systemPrompt = """
-            You are an expert HR job description writer for a government organization.
-            You create professional, inclusive, and policy-compliant job descriptions.
+            You are an expert technical recruiter and HR job description writer.
+            You have deep knowledge of current industry standards, market rates, and role expectations.
+            
+            Generate a comprehensive, professional job description with EXACTLY these sections:
+            
+            ## About the Role
+            A compelling 2-3 paragraph overview of the position, team, and impact.
+            
+            ## Key Responsibilities
+            - 8-12 specific, action-oriented bullet points
+            
+            ## Requirements
+            - 5-8 mandatory qualifications (education, years of experience, certifications, technical skills)
+            
+            ## Preferred Qualifications
+            - 4-6 nice-to-have skills or experiences
             
             Rules:
             - Use inclusive language (avoid gendered terms, age-biased language)
-            - Be specific about responsibilities and qualifications
-            - Follow the organization's policy guidelines when provided
-            - Structure the output with clear sections: About the Role, Key Responsibilities, Required Qualifications, Preferred Qualifications, What We Offer
+            - Be specific and realistic about responsibilities and qualifications
+            - Base requirements on current industry standards for the role level
             - Make descriptions engaging while remaining professional
-            - Include equal opportunity statement at the end
-            - Do not invent policies - only reference what is provided in the policy context
+            - Include an equal opportunity statement at the end
+            - Do NOT include a Benefits section
+            - Format using markdown
             """;
 
         var userPrompt = BuildDetailedPrompt(request);
@@ -67,7 +81,7 @@ public class JobDescriptionGeneratorService : IJobDescriptionGenerator
         var options = new ChatCompletionOptions
         {
             Temperature = 0.7f,
-            MaxOutputTokenCount = 2000
+            MaxOutputTokenCount = 4000
         };
 
         var response = await chatClient.CompleteChatAsync(messages, options);
@@ -77,7 +91,7 @@ public class JobDescriptionGeneratorService : IJobDescriptionGenerator
     private static string BuildDetailedPrompt(JobDescriptionRequest request)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Generate a comprehensive job description with the following details:");
+        sb.AppendLine("Generate a comprehensive job description based on the following inputs. Use your knowledge of current industry standards to fill in realistic details where the user has not provided them.");
         sb.AppendLine();
         sb.AppendLine($"**Job Title:** {request.Title}");
         sb.AppendLine($"**Department:** {request.Department}");
@@ -106,31 +120,24 @@ public class JobDescriptionGeneratorService : IJobDescriptionGenerator
         if (!string.IsNullOrWhiteSpace(request.Responsibilities))
         {
             sb.AppendLine();
-            sb.AppendLine("**Key Responsibilities Context:**");
+            sb.AppendLine("**Key Responsibilities Context (expand on these):**");
             sb.AppendLine(request.Responsibilities);
         }
 
         if (!string.IsNullOrWhiteSpace(request.Requirements))
         {
             sb.AppendLine();
-            sb.AppendLine("**Additional Requirements:**");
+            sb.AppendLine("**Additional Requirements (include these):**");
             sb.AppendLine(request.Requirements);
         }
 
         if (!string.IsNullOrWhiteSpace(request.SalaryRange))
             sb.AppendLine($"**Salary Range:** {request.SalaryRange}");
 
-        if (!string.IsNullOrWhiteSpace(request.Benefits))
-        {
-            sb.AppendLine();
-            sb.AppendLine("**Benefits to highlight:**");
-            sb.AppendLine(request.Benefits);
-        }
-
         if (!string.IsNullOrWhiteSpace(request.PolicyContext))
         {
             sb.AppendLine();
-            sb.AppendLine("**IMPORTANT - Organization Policy Context (must comply with):**");
+            sb.AppendLine("**Organization Policy Context (must comply with):**");
             sb.AppendLine(request.PolicyContext);
         }
 
@@ -205,7 +212,10 @@ public class JobDescriptionGeneratorService : IJobDescriptionGenerator
 
     private ChatClient CreateChatClient()
     {
-        var endpoint = new Uri(_options.OpenAIEndpoint, UriKind.Absolute);
+        var rawEndpoint = _options.OpenAIEndpoint;
+        // Strip /openai/v1 suffix if present — AzureOpenAIClient doesn't want it
+        rawEndpoint = System.Text.RegularExpressions.Regex.Replace(rawEndpoint, @"/openai(/v\d+)?/?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var endpoint = new Uri(rawEndpoint, UriKind.Absolute);
         var client = string.IsNullOrWhiteSpace(_options.OpenAIKey)
             ? new AzureOpenAIClient(endpoint, new DefaultAzureCredential())
             : new AzureOpenAIClient(endpoint, new ApiKeyCredential(_options.OpenAIKey));

@@ -7,17 +7,34 @@ namespace CareerApp.Infrastructure.Services;
 
 public sealed class BlobStorageService
 {
-    private readonly BlobContainerClient _containerClient;
+    private readonly BlobContainerClient? _containerClient;
 
     public BlobStorageService(IOptions<BlobStorageOptions> options)
     {
         var config = options.Value;
-        var blobServiceClient = new BlobServiceClient(config.ConnectionString);
-        _containerClient = blobServiceClient.GetBlobContainerClient(config.ContainerName);
+        if (!string.IsNullOrWhiteSpace(config.ConnectionString) 
+            && !config.ConnectionString.Contains("youraccount", StringComparison.OrdinalIgnoreCase)
+            && !config.ConnectionString.Contains("yourkey", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var blobServiceClient = new BlobServiceClient(config.ConnectionString);
+                _containerClient = blobServiceClient.GetBlobContainerClient(config.ContainerName);
+            }
+            catch
+            {
+                // Invalid connection string — run without blob storage
+            }
+        }
     }
+
+    public bool IsConfigured => _containerClient is not null;
 
     public async Task<string> UploadCvAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default)
     {
+        if (_containerClient is null)
+            return $"local://{fileName}";
+
         await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
 
         var blobName = $"{Guid.NewGuid()}/{fileName}";
@@ -33,6 +50,8 @@ public sealed class BlobStorageService
 
     public async Task<Stream?> DownloadCvAsync(string blobUrl, CancellationToken cancellationToken = default)
     {
+        if (_containerClient is null) return null;
+
         var blobClient = GetBlobClient(blobUrl);
 
         if (!await blobClient.ExistsAsync(cancellationToken))
@@ -46,6 +65,8 @@ public sealed class BlobStorageService
 
     public async Task DeleteCvAsync(string blobUrl, CancellationToken cancellationToken = default)
     {
+        if (_containerClient is null) return;
+
         var blobClient = GetBlobClient(blobUrl);
         await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
     }

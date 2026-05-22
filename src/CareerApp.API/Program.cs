@@ -49,18 +49,21 @@ using (var scope = app.Services.CreateScope())
     await cosmosDb.InitializeAsync();
 }
 
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        await context.Response.WriteAsJsonAsync(new { message = "An unexpected error occurred." });
-    });
-});
-
 if (app.Environment.IsDevelopment())
 {
+    app.UseDeveloperExceptionPage();
     app.MapOpenApi();
+}
+else
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new { message = "An unexpected error occurred." });
+        });
+    });
 }
 
 app.UseHttpsRedirection();

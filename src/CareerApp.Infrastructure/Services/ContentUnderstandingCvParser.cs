@@ -1,8 +1,13 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Azure.AI.OpenAI;
 using CareerApp.Core.Models;
 using CareerApp.Infrastructure.Configuration;
+using DocumentFormat.OpenXml.Packaging;
 using Microsoft.Extensions.Options;
+using OpenAI.Chat;
 
 namespace CareerApp.Infrastructure.Services;
 
@@ -25,14 +30,264 @@ public sealed class ContentUnderstandingCvParser
         await document.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
         var documentBytes = memoryStream.ToArray();
 
-        var extractedData = await AnalyzeWithContentUnderstandingAsync(documentBytes, fileName, cancellationToken).ConfigureAwait(false);
+        ContentUnderstandingResult extractedData;
+        try
+        {
+            extractedData = await AnalyzeWithContentUnderstandingAsync(documentBytes, fileName, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Fallback: extract text from document, then use OpenAI for structured parsing
+            var text = ExtractTextFromDocument(documentBytes, fileName);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new InvalidDataException($"Unable to extract text from '{fileName}'. Supported formats: PDF, DOCX, DOC, TXT.");
+            }
+
+            extractedData = await ParseWithOpenAIAsync(text, fileName, cancellationToken).ConfigureAwait(false);
+        }
 
         return MapToCandidate(extractedData, fileName);
     }
 
+    /// <summary>
+    /// Extracts plain text from DOCX, DOC, PDF, or text files.
+    /// </summary>
+    private static string ExtractTextFromDocument(byte[] documentBytes, string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        return extension switch
+        {
+            ".docx" => ExtractTextFromDocx(documentBytes),
+            ".doc" => ExtractTextFromDoc(documentBytes),
+            ".pdf" => ExtractTextFromPdf(documentBytes),
+            _ => Encoding.UTF8.GetString(documentBytes) // txt, md, etc.
+        };
+    }
+
+    private static string ExtractTextFromDocx(byte[] documentBytes)
+    {
+        using var stream = new MemoryStream(documentBytes);
+        using var wordDoc = WordprocessingDocument.Open(stream, false);
+        var body = wordDoc.MainDocumentPart?.Document?.Body;
+        if (body is null) return string.Empty;
+
+        var sb = new StringBuilder();
+        foreach (var paragraph in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+        {
+            var text = paragraph.InnerText;
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.AppendLine(text);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string ExtractTextFromDoc(byte[] documentBytes)
+    {
+        // .doc is a legacy binary format — extract readable ASCII/Unicode text
+        var sb = new StringBuilder();
+        var text = Encoding.UTF8.GetString(documentBytes);
+        
+        // Filter out binary garbage, keep readable text segments
+        foreach (var line in text.Split('\n'))
+        {
+            var cleaned = new string(line.Where(c => !char.IsControl(c) || c == '\t').ToArray()).Trim();
+            if (cleaned.Length > 3 && cleaned.Count(char.IsLetter) > cleaned.Length / 2)
+            {
+                sb.AppendLine(cleaned);
+            }
+        }
+
+        // If UTF8 extraction yielded little, try Unicode (UTF-16)
+        if (sb.Length < 50 && documentBytes.Length > 100)
+        {
+            sb.Clear();
+            text = Encoding.Unicode.GetString(documentBytes);
+            foreach (var line in text.Split('\n'))
+            {
+                var cleaned = new string(line.Where(c => !char.IsControl(c) || c == '\t').ToArray()).Trim();
+                if (cleaned.Length > 3 && cleaned.Count(char.IsLetter) > cleaned.Length / 2)
+                {
+                    sb.AppendLine(cleaned);
+                }
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string ExtractTextFromPdf(byte[] documentBytes)
+    {
+        // For PDF, return a marker — the Document Intelligence path handles PDFs better
+        // This fallback just extracts embedded text strings
+        var text = Encoding.UTF8.GetString(documentBytes);
+        var sb = new StringBuilder();
+        
+        // Extract text between BT and ET operators (basic PDF text extraction)
+        var matches = Regex.Matches(text, @"\(([^)]+)\)", RegexOptions.Compiled);
+        foreach (Match match in matches)
+        {
+            var segment = match.Groups[1].Value;
+            if (segment.Length > 2 && segment.Any(char.IsLetter))
+            {
+                sb.Append(segment).Append(' ');
+            }
+        }
+
+        return sb.Length > 50 ? sb.ToString() : text;
+    }
+
+    /// <summary>
+    /// Uses Azure OpenAI to extract structured CV data from plain text.
+    /// </summary>
+    private async Task<ContentUnderstandingResult> ParseWithOpenAIAsync(string cvText, string fileName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.OpenAIEndpoint) || 
+            _options.OpenAIEndpoint.Contains("your-resource", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(_options.OpenAIKey))
+        {
+            // No OpenAI available — use regex fallback
+            return FallbackRegexParsing(cvText, fileName);
+        }
+
+        try
+        {
+            var endpoint = _options.OpenAIEndpoint.TrimEnd('/');
+            // Remove /openai/v1 suffix if present since the SDK adds its own path
+            endpoint = Regex.Replace(endpoint, @"/openai(/v\d+)?$", "", RegexOptions.IgnoreCase);
+            
+            var client = new AzureOpenAIClient(new Uri(endpoint), new System.ClientModel.ApiKeyCredential(_options.OpenAIKey));
+            var chatClient = client.GetChatClient(_options.OpenAIDeploymentName ?? "gpt-4o");
+
+            var systemPrompt = @"You are a CV/Resume parser. Extract structured information from the CV text provided.
+Return ONLY a valid JSON object with this exact schema (no markdown, no explanation):
+{
+  ""fullName"": ""string"",
+  ""email"": ""string"",
+  ""phone"": ""string"",
+  ""summary"": ""A 2-3 sentence professional summary"",
+  ""skills"": [""skill1"", ""skill2""],
+  ""experience"": [{""company"": ""string"", ""title"": ""string"", ""description"": ""brief description""}],
+  ""education"": [{""institution"": ""string"", ""degree"": ""string"", ""fieldOfStudy"": ""string""}]
+}";
+
+            var trimmedCv = cvText.Length > 8000 ? cvText[..8000] : cvText;
+
+            var response = await chatClient.CompleteChatAsync(
+                [
+                    new SystemChatMessage(systemPrompt),
+                    new UserChatMessage($"Parse this CV:\n\n{trimmedCv}")
+                ],
+                new ChatCompletionOptions { Temperature = 0.1f },
+                cancellationToken).ConfigureAwait(false);
+
+            var responseText = response.Value.Content[0].Text ?? "{}";
+            // Strip markdown code fences if present
+            responseText = Regex.Replace(responseText, @"^```(?:json)?\s*", "", RegexOptions.Multiline);
+            responseText = Regex.Replace(responseText, @"\s*```$", "", RegexOptions.Multiline);
+
+            return ParseOpenAIResponse(responseText);
+        }
+        catch
+        {
+            return FallbackRegexParsing(cvText, fileName);
+        }
+    }
+
+    private static ContentUnderstandingResult ParseOpenAIResponse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var result = new ContentUnderstandingResult
+        {
+            FullName = root.TryGetProperty("fullName", out var fn) ? fn.GetString() ?? "" : "",
+            Email = root.TryGetProperty("email", out var em) ? em.GetString() ?? "" : "",
+            Phone = root.TryGetProperty("phone", out var ph) ? ph.GetString() ?? "" : "",
+            Summary = root.TryGetProperty("summary", out var su) ? su.GetString() ?? "" : ""
+        };
+
+        if (root.TryGetProperty("skills", out var skills) && skills.ValueKind == JsonValueKind.Array)
+        {
+            result.Skills = skills.EnumerateArray()
+                .Select(s => s.GetString())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!)
+                .ToList();
+        }
+
+        if (root.TryGetProperty("experience", out var exp) && exp.ValueKind == JsonValueKind.Array)
+        {
+            result.Experience = exp.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Object)
+                .Select(e => new ContentUnderstandingExperience
+                {
+                    Company = e.TryGetProperty("company", out var c) ? c.GetString() ?? "" : "",
+                    Title = e.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    Description = e.TryGetProperty("description", out var d) ? d.GetString() ?? "" : ""
+                }).ToList();
+        }
+
+        if (root.TryGetProperty("education", out var edu) && edu.ValueKind == JsonValueKind.Array)
+        {
+            result.Education = edu.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Object)
+                .Select(e => new ContentUnderstandingEducation
+                {
+                    Institution = e.TryGetProperty("institution", out var i) ? i.GetString() ?? "" : "",
+                    Degree = e.TryGetProperty("degree", out var dg) ? dg.GetString() ?? "" : "",
+                    FieldOfStudy = e.TryGetProperty("fieldOfStudy", out var f) ? f.GetString() ?? "" : ""
+                }).ToList();
+        }
+
+        return result;
+    }
+
+    private static ContentUnderstandingResult FallbackRegexParsing(string text, string fileName)
+    {
+        return new ContentUnderstandingResult
+        {
+            FullName = InferNameFromText(text, fileName),
+            Email = ExtractPattern(text, @"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"),
+            Phone = ExtractPattern(text, @"(?:\+?\d[\d().\-\s]{7,}\d)"),
+            Summary = text.Length > 500 ? text[..500] : text,
+            Skills = ExtractSkillsFromText(text),
+            Experience = [],
+            Education = []
+        };
+    }
+
+    private static string InferNameFromText(string text, string fileName)
+    {
+        var lines = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var firstLine = lines.FirstOrDefault(l => !l.Contains('@') && !Regex.IsMatch(l, @"\d{3}"));
+        return !string.IsNullOrWhiteSpace(firstLine) && firstLine.Length < 60 
+            ? firstLine 
+            : Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Replace('-', ' ');
+    }
+
+    private static string ExtractPattern(string text, string pattern)
+    {
+        var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+        return match.Success ? match.Value : string.Empty;
+    }
+
+    private static List<string> ExtractSkillsFromText(string text)
+    {
+        string[] knownSkills = ["C#", ".NET", "ASP.NET", "Azure", "SQL", "Python", "Java", "JavaScript", "TypeScript",
+            "React", "Angular", "Node.js", "Docker", "Kubernetes", "Terraform", "Power BI", "AI", "Machine Learning",
+            "AWS", "GCP", "MongoDB", "PostgreSQL", "Redis", "Git", "CI/CD", "Agile", "Scrum", "REST", "GraphQL",
+            "HTML", "CSS", "Sass", "Vue.js", "Next.js", "Spring Boot", "Django", "Flask", "Go", "Rust", "Swift"];
+        return knownSkills.Where(s => text.Contains(s, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
     private async Task<ContentUnderstandingResult> AnalyzeWithContentUnderstandingAsync(byte[] documentBytes, string fileName, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.ContentUnderstandingEndpoint))
+        if (string.IsNullOrWhiteSpace(_options.ContentUnderstandingEndpoint)
+            || _options.ContentUnderstandingEndpoint.Contains("your-resource", StringComparison.OrdinalIgnoreCase))
         {
             return new ContentUnderstandingResult
             {

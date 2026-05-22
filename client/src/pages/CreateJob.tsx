@@ -17,7 +17,6 @@ interface JobFormState {
   teamSize: string;
   reportingTo: string;
   salaryRange: string;
-  benefits: string;
   policyContext: string;
   tone: string;
 }
@@ -36,7 +35,6 @@ const initialState: JobFormState = {
   teamSize: '',
   reportingTo: '',
   salaryRange: '',
-  benefits: '',
   policyContext: 'Use inclusive language and keep the role clear and candidate-friendly.',
   tone: 'Professional and inclusive',
 };
@@ -113,7 +111,7 @@ function CreateJob() {
         teamSize: form.teamSize,
         reportingTo: form.reportingTo,
         salaryRange: form.salaryRange,
-        benefits: form.benefits,
+        benefits: '',
         policyContext: form.policyContext,
         tone: form.tone,
       });
@@ -135,6 +133,7 @@ function CreateJob() {
         title: form.title,
         description: form.description,
         department: form.department,
+        requirements: '',
         requiredSkills: form.requiredSkills,
         preferredSkills: form.preferredSkills,
         experienceLevel: form.experienceLevel,
@@ -270,17 +269,6 @@ function CreateJob() {
             onChange={handleInputChange('requirements')}
             placeholder="List mandatory qualifications, certifications, or experience"
             rows={5}
-          />
-        </label>
-
-        <label className="field field-full">
-          <span>Benefits</span>
-          <textarea
-            className="input textarea"
-            value={form.benefits}
-            onChange={handleInputChange('benefits')}
-            placeholder="Highlight benefits, flexibility, learning, and other perks"
-            rows={4}
           />
         </label>
 

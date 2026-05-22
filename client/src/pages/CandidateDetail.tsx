@@ -13,6 +13,16 @@ const formatDate = (value?: string | null) => {
   return new Date(value).toLocaleDateString();
 };
 
+const getSkillsArray = (skills: string[] | string | undefined): string[] => {
+  if (!skills) return [];
+  if (Array.isArray(skills)) return skills;
+  return skills.split(',').map(s => s.trim()).filter(Boolean);
+};
+
+const isPdfFile = (fileName?: string) => {
+  return fileName?.toLowerCase().endsWith('.pdf');
+};
+
 function CandidateDetail() {
   const { id = '' } = useParams();
   const [candidate, setCandidate] = useState<Candidate | null>(null);
@@ -21,6 +31,7 @@ function CandidateDetail() {
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
   const [error, setError] = useState('');
+  const [showCv, setShowCv] = useState(false);
 
   useEffect(() => {
     const loadCandidate = async () => {
@@ -109,8 +120,8 @@ function CandidateDetail() {
           <div>
             <p className="section-label">Skills</p>
             <div className="tag-list">
-              {candidate.skills.length > 0 ? (
-                candidate.skills.map((skill) => <SkillTag key={skill} skill={skill} />)
+              {getSkillsArray(candidate.skills).length > 0 ? (
+                getSkillsArray(candidate.skills).map((skill) => <SkillTag key={skill} skill={skill} />)
               ) : (
                 <span className="muted-text">No skills extracted.</span>
               )}
@@ -140,12 +151,12 @@ function CandidateDetail() {
                     </div>
                     <p>{match.explanation}</p>
                     <div className="tag-list tag-list-compact">
-                      {match.skillMatches.map((skill) => (
+                      {(match.skillMatches || []).map((skill) => (
                         <SkillTag key={skill} skill={skill} />
                       ))}
                     </div>
-                    {match.skillGaps.length > 0 ? (
-                      <p className="muted-text">Skill gaps: {match.skillGaps.join(', ')}</p>
+                    {(match.skillGaps || []).length > 0 ? (
+                      <p className="muted-text">Skill gaps: {(match.skillGaps || []).join(', ')}</p>
                     ) : null}
                   </div>
                 );
@@ -161,10 +172,10 @@ function CandidateDetail() {
             <p className="section-label">Career history</p>
             <h2>Experience</h2>
           </div>
-          {candidate.experience.length === 0 ? (
+          {(candidate.experience || []).length === 0 ? (
             <div className="empty-state">No work experience extracted.</div>
           ) : (
-            candidate.experience.map((experience) => (
+            (candidate.experience || []).map((experience) => (
               <div key={experience.id} className="timeline-item">
                 <strong>{experience.title}</strong>
                 <p>{experience.company}</p>
@@ -182,10 +193,10 @@ function CandidateDetail() {
             <p className="section-label">Academic background</p>
             <h2>Education</h2>
           </div>
-          {candidate.education.length === 0 ? (
+          {(candidate.education || []).length === 0 ? (
             <div className="empty-state">No education records extracted.</div>
           ) : (
-            candidate.education.map((item) => (
+            (candidate.education || []).map((item) => (
               <div key={item.id} className="timeline-item">
                 <strong>{item.degree}</strong>
                 <p>
@@ -198,6 +209,76 @@ function CandidateDetail() {
             ))
           )}
         </article>
+      </section>
+
+      {/* CV Document Viewer */}
+      <section className="section-card stack-gap">
+        <div className="cv-viewer-header">
+          <div>
+            <p className="section-label">Uploaded document</p>
+            <h2>CV / Resume</h2>
+          </div>
+          <div className="cv-viewer-actions">
+            {candidate.cvFileName && (
+              <a
+                href={candidatesApi.getCvUrl(candidate.id)}
+                download={candidate.cvFileName}
+                className="button button-secondary"
+              >
+                Download
+              </a>
+            )}
+            <button
+              className="button"
+              type="button"
+              onClick={() => setShowCv(!showCv)}
+            >
+              {showCv ? 'Hide CV' : 'View CV'}
+            </button>
+          </div>
+        </div>
+
+        {showCv && candidate.cvFileName && (
+          <div className="cv-viewer-container">
+            {isPdfFile(candidate.cvFileName) ? (
+              <object
+                data={candidatesApi.getCvUrl(candidate.id)}
+                type="application/pdf"
+                className="cv-viewer-iframe"
+                aria-label="CV Document"
+              >
+                <div className="cv-viewer-fallback">
+                  <p>Unable to display PDF preview. The file may need to be re-uploaded.</p>
+                  <a
+                    href={candidatesApi.getCvUrl(candidate.id)}
+                    download={candidate.cvFileName}
+                    className="button"
+                  >
+                    Download PDF
+                  </a>
+                </div>
+              </object>
+            ) : (
+              <div className="cv-viewer-fallback">
+                <p>Preview is only available for PDF files.</p>
+                <p>
+                  File: <strong>{candidate.cvFileName}</strong>
+                </p>
+                <a
+                  href={candidatesApi.getCvUrl(candidate.id)}
+                  download={candidate.cvFileName}
+                  className="button"
+                >
+                  Download to view
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!candidate.cvFileName && (
+          <div className="empty-state">No CV file uploaded for this candidate.</div>
+        )}
       </section>
     </div>
   );

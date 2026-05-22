@@ -13,9 +13,14 @@ public sealed class JobsController(
     IJobMatchingService jobMatchingService) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyCollection<Job>>> GetJobsAsync(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyCollection<Job>>> GetJobsAsync([FromQuery] bool? active, CancellationToken cancellationToken)
     {
-        var jobs = await jobRepository.GetAllActiveAsync(cancellationToken);
+        var jobs = active switch
+        {
+            true => await jobRepository.GetAllActiveAsync(cancellationToken),
+            false => (await jobRepository.GetAllAsync(cancellationToken)).Where(j => !j.IsActive).ToList(),
+            _ => await jobRepository.GetAllAsync(cancellationToken)
+        };
         return Ok(jobs);
     }
 
@@ -40,11 +45,15 @@ public sealed class JobsController(
             Department = request.Department,
             Description = request.Description,
             Requirements = request.Requirements,
+            RequiredSkills = request.RequiredSkills ?? [],
+            PreferredSkills = request.PreferredSkills ?? [],
+            Location = request.Location,
+            ExperienceLevel = request.ExperienceLevel,
             IsActive = request.IsActive
         };
 
         var savedJob = await jobRepository.AddAsync(job, cancellationToken);
-        return CreatedAtAction(nameof(GetJobByIdAsync), new { id = savedJob.Id }, savedJob);
+        return Created($"/api/jobs/{savedJob.Id}", savedJob);
     }
 
     [HttpPut("{id:guid}")]
@@ -65,6 +74,10 @@ public sealed class JobsController(
         existingJob.Department = request.Department;
         existingJob.Description = request.Description;
         existingJob.Requirements = request.Requirements;
+        existingJob.RequiredSkills = request.RequiredSkills ?? existingJob.RequiredSkills;
+        existingJob.PreferredSkills = request.PreferredSkills ?? existingJob.PreferredSkills;
+        existingJob.Location = request.Location;
+        existingJob.ExperienceLevel = request.ExperienceLevel;
         existingJob.IsActive = request.IsActive;
         existingJob.UpdatedAtUtc = DateTime.UtcNow;
 

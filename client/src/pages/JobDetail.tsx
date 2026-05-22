@@ -50,11 +50,11 @@ function JobDetail() {
       const description = await jobsApi.generateDescription({
         title: job.title,
         department: job.department,
-        location: job.location,
-        experienceLevel: job.experienceLevel,
+        location: job.location || '',
+        experienceLevel: job.experienceLevel || '',
         employmentType: 'Full-time',
-        requiredSkills: job.requiredSkills,
-        preferredSkills: job.preferredSkills,
+        requiredSkills: job.requiredSkills || [],
+        preferredSkills: job.preferredSkills || [],
         responsibilities: job.description,
         requirements: '',
         teamSize: '',
@@ -145,13 +145,13 @@ function JobDetail() {
           <div>
             <p className="section-label">Required</p>
             <div className="tag-list">
-              {job.requiredSkills.length > 0 ? job.requiredSkills.map((skill) => <SkillTag key={skill} skill={skill} />) : <span className="muted-text">No required skills added.</span>}
+              {(job.requiredSkills || []).length > 0 ? (job.requiredSkills || []).map((skill) => <SkillTag key={skill} skill={skill} />) : <span className="muted-text">No required skills added.</span>}
             </div>
           </div>
           <div>
             <p className="section-label">Preferred</p>
             <div className="tag-list">
-              {job.preferredSkills.length > 0 ? job.preferredSkills.map((skill) => <SkillTag key={skill} skill={skill} />) : <span className="muted-text">No preferred skills added.</span>}
+              {(job.preferredSkills || []).length > 0 ? (job.preferredSkills || []).map((skill) => <SkillTag key={skill} skill={skill} />) : <span className="muted-text">No preferred skills added.</span>}
             </div>
           </div>
         </article>
@@ -180,9 +180,9 @@ function JobDetail() {
                     <MatchScoreBadge score={match.score} level={match.matchLevel} />
                   </div>
                   <p>{match.explanation}</p>
-                  {match.skillMatches.length > 0 ? (
+                  {(match.skillMatches || []).length > 0 ? (
                     <div className="tag-list tag-list-compact">
-                      {match.skillMatches.map((skill) => (
+                      {(match.skillMatches || []).map((skill) => (
                         <SkillTag key={skill} skill={skill} />
                       ))}
                     </div>

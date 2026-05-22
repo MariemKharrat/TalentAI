@@ -87,6 +87,9 @@ export const candidatesApi = {
     const { data } = await api.get<MatchResult[]>(`/candidates/${id}/matches`);
     return data;
   },
+  getCvUrl(id: string) {
+    return `http://localhost:5000/api/candidates/${id}/cv`;
+  },
   async delete(id: string) {
     await api.delete(`/candidates/${id}`);
   },
@@ -132,15 +135,15 @@ export const jobsApi = {
 
 export const matchingApi = {
   async matchCandidateToJob(candidateId: string, jobId: string) {
-    const { data } = await api.post<MatchResult>(`/matching/candidates/${candidateId}/jobs/${jobId}`);
+    const { data } = await api.post<MatchResult>(`/matching/candidate/${candidateId}/job/${jobId}`);
     return data;
   },
   async matchCandidateToAllJobs(candidateId: string) {
-    const { data } = await api.post<MatchResult[]>(`/matching/candidates/${candidateId}/all-jobs`);
+    const { data } = await api.post<MatchResult[]>(`/matching/candidate/${candidateId}/all-jobs`);
     return data;
   },
   async matchJobToAllCandidates(jobId: string) {
-    const { data } = await api.post<MatchResult[]>(`/matching/jobs/${jobId}/all-candidates`);
+    const { data } = await api.post<MatchResult[]>(`/matching/job/${jobId}/all-candidates`);
     return data;
   },
 };

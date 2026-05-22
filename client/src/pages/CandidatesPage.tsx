@@ -12,7 +12,12 @@ const formatParsingMethod = (value?: string) =>
     : 'Content Understanding (AI-powered)';
 const getCandidateName = (candidate: Candidate) =>
   candidate.fullName?.trim() || `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || 'Unnamed candidate';
-const getCandidateSkills = (candidate: Candidate) => candidate.skills;
+const getCandidateSkills = (candidate: Candidate): string[] => {
+  if (Array.isArray(candidate.skills)) return candidate.skills;
+  if (typeof candidate.skills === 'string' && candidate.skills) 
+    return candidate.skills.split(',').map(s => s.trim()).filter(Boolean);
+  return [];
+};
 const getCandidateCreatedAt = (candidate: Candidate) => candidate.createdAtUtc ?? candidate.createdAt;
 
 function CandidatesPage() {

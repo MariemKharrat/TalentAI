@@ -25,12 +25,13 @@ export interface Candidate {
   fullName?: string;
   email: string;
   phone: string;
-  skills: string[];
+  skills: string[] | string;
   experience: WorkExperience[];
   education: Education[];
   summary: string;
   cvFileUrl: string;
   cvFileName?: string;
+  cvBlobUrl?: string;
   createdAt: string;
   createdAtUtc?: string;
   parsingMethod?: string;
@@ -41,12 +42,15 @@ export interface Job {
   title: string;
   description: string;
   department: string;
-  requiredSkills: string[];
-  preferredSkills: string[];
-  experienceLevel: string;
-  location: string;
+  requirements: string;
+  requiredSkills?: string[];
+  preferredSkills?: string[];
+  experienceLevel?: string;
+  location?: string;
   isActive: boolean;
-  createdAt: string;
+  createdAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 }
 
 export enum MatchLevel {
