@@ -43,3 +43,6 @@ appsettings.Development.json
 *.key
 
 uploads/
+
+# Exclude secrets
+appsettings.json
