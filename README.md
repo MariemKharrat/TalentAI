@@ -106,25 +106,34 @@ cd CareerApp
 
 ### 2. Configure credentials
 
-Edit `src/CareerApp.API/appsettings.json`:
+Edit `src/CareerApp.API/appsettings.json` using the following template:
 ```json
 {
-  "AzureAI": {
-    "DocumentIntelligenceEndpoint": "https://<your-resource>.cognitiveservices.azure.com/",
-    "DocumentIntelligenceKey": "<your-key>",
-    "OpenAIEndpoint": "https://<your-resource>.openai.azure.com/",
-    "OpenAIKey": "<your-key>",
-    "OpenAIDeploymentName": "gpt-4o"
-  },
   "CosmosDb": {
     "Endpoint": "https://<your-account>.documents.azure.com:443/",
-    "Key": "<your-key>",
+    "Key": "<your-cosmosdb-key>",
     "DatabaseName": "CareerApp"
   },
   "BlobStorage": {
-    "ConnectionString": "<optional-connection-string>",
-    "ContainerName": "cvs"
-  }
+    "ConnectionString": "DefaultEndpointsProtocol=https;AccountName=<your-account>;AccountKey=<your-key>;EndpointSuffix=core.windows.net",
+    "ContainerName": "cv-files"
+  },
+  "AzureAI": {
+    "DocumentIntelligenceEndpoint": "https://<your-resource>.cognitiveservices.azure.com/",
+    "DocumentIntelligenceKey": "<your-key>",
+    "OpenAIEndpoint": "https://<your-resource>.openai.azure.com/openai/v1",
+    "OpenAIKey": "<your-key>",
+    "OpenAIDeploymentName": "gpt-4o",
+    "ContentUnderstandingEndpoint": "https://<your-resource>.services.ai.azure.com/",
+    "ContentUnderstandingKey": "<your-key>",
+    "ContentUnderstandingAnalyzerId": "cv-analyzer"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information"
+    }
+  },
+  "AllowedHosts": "*"
 }
 ```
 
