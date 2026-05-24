@@ -3,7 +3,7 @@
 An AI-powered recruitment application that augments the hiring process using Azure AI services. Built with **.NET 10** (backend) and **React TypeScript** (frontend), integrated with **Azure AI Foundry** for intelligent automation.
 
 
-![alt text](Home.png)
+![alt text](HomePage-latest.png)
 ---
 
 ## 🎯 Use Cases
