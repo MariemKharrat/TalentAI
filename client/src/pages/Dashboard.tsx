@@ -61,7 +61,7 @@ function Dashboard() {
   );
 
   return (
-    <div className="page">
+    <div className="page stack-gap-lg">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Recruitment intelligence</p>

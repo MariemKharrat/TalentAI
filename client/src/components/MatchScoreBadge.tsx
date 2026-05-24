@@ -5,10 +5,10 @@ interface MatchScoreBadgeProps {
   level: MatchLevel;
 }
 
-const badgeStyles: Record<MatchLevel, { background: string; color: string }> = {
-  [MatchLevel.High]: { background: '#dcfce7', color: '#166534' },
-  [MatchLevel.Medium]: { background: '#fef3c7', color: '#92400e' },
-  [MatchLevel.Low]: { background: '#fee2e2', color: '#b91c1c' },
+const badgeStyles: Record<MatchLevel, { background: string; color: string; border: string }> = {
+  [MatchLevel.High]: { background: 'var(--success-bg)', color: 'var(--success-color)', border: '1px solid var(--success-border)' },
+  [MatchLevel.Medium]: { background: 'var(--warning-bg)', color: 'var(--warning-color)', border: '1px solid var(--warning-border)' },
+  [MatchLevel.Low]: { background: 'var(--danger-bg)', color: 'var(--danger-color)', border: '1px solid var(--danger-border)' },
 };
 
 function MatchScoreBadge({ score, level }: MatchScoreBadgeProps) {
