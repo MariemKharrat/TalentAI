@@ -9,4 +9,6 @@ public interface IJobMatchingService
     Task<IReadOnlyCollection<MatchResult>> MatchJobToCandidatesAsync(Guid jobId, CancellationToken cancellationToken = default);
     Task<IReadOnlyCollection<MatchResult>> GetMatchesForCandidateAsync(Guid candidateId, CancellationToken cancellationToken = default);
     Task<IReadOnlyCollection<MatchResult>> GetMatchesForJobAsync(Guid jobId, CancellationToken cancellationToken = default);
+    Task DeleteMatchesForCandidateAsync(Guid candidateId, CancellationToken cancellationToken = default);
+    Task DeleteMatchesForJobAsync(Guid jobId, CancellationToken cancellationToken = default);
 }

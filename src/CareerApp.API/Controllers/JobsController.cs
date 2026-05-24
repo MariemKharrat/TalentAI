@@ -89,7 +89,15 @@ public sealed class JobsController(
     public async Task<IActionResult> DeleteJobAsync(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await jobRepository.DeleteAsync(id, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        // Cascade delete: remove all match results for this job
+        await jobMatchingService.DeleteMatchesForJobAsync(id, cancellationToken);
+
+        return NoContent();
     }
 
     [HttpPost("generate-description")]

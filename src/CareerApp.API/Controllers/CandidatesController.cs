@@ -96,7 +96,22 @@ public sealed class CandidatesController(
     public async Task<IActionResult> DeleteCandidateAsync(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await candidateRepository.DeleteAsync(id, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        // Cascade delete: remove all match results for this candidate
+        await jobMatchingService.DeleteMatchesForCandidateAsync(id, cancellationToken);
+
+        // Clean up local CV files if any
+        var localDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", id.ToString());
+        if (Directory.Exists(localDir))
+        {
+            Directory.Delete(localDir, recursive: true);
+        }
+
+        return NoContent();
     }
 
     [HttpGet("{id:guid}/cv")]

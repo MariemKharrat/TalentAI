@@ -114,6 +114,44 @@ public class JobMatchingService : IJobMatchingService
         return QueryMatchResultsAsync(query, requestOptions: null, cancellationToken);
     }
 
+    public async Task DeleteMatchesForCandidateAsync(Guid candidateId, CancellationToken cancellationToken = default)
+    {
+        var matches = await GetMatchesForCandidateAsync(candidateId, cancellationToken);
+        foreach (var match in matches)
+        {
+            try
+            {
+                await _cosmosDb.MatchResults.DeleteItemAsync<MatchResult>(
+                    match.Id.ToString(),
+                    new PartitionKey(match.CandidateId.ToString()),
+                    cancellationToken: cancellationToken);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Already deleted
+            }
+        }
+    }
+
+    public async Task DeleteMatchesForJobAsync(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        var matches = await GetMatchesForJobAsync(jobId, cancellationToken);
+        foreach (var match in matches)
+        {
+            try
+            {
+                await _cosmosDb.MatchResults.DeleteItemAsync<MatchResult>(
+                    match.Id.ToString(),
+                    new PartitionKey(match.CandidateId.ToString()),
+                    cancellationToken: cancellationToken);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Already deleted
+            }
+        }
+    }
+
     private async Task<MatchResult> BuildAndPersistMatchResultAsync(Candidate candidate, Job job, CancellationToken cancellationToken)
     {
         MatchEvaluation evaluation;

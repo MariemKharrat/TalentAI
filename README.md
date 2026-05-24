@@ -17,6 +17,7 @@ An AI-powered recruitment application that augments the hiring process using Azu
 
 ---
 
+![alt text](DemoTalentAI.gif)
 ## 🏗️ Architecture
 
 ```
