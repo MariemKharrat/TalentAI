@@ -1,0 +1,69 @@
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'client/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: RG-AI-UC
+  ACR_NAME: talentaiacruc
+  API_APP: talentai-api
+  WEB_APP: talentai-web
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set image tag
+        id: vars
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push API image (ACR build)
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "talentai-api:${{ steps.vars.outputs.tag }}" \
+            --image "talentai-api:latest" \
+            --file src/CareerApp.API/Dockerfile \
+            src
+
+      - name: Build & push Web image (ACR build)
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "talentai-web:${{ steps.vars.outputs.tag }}" \
+            --image "talentai-web:latest" \
+            --file client/Dockerfile \
+            client
+
+      - name: Deploy API container app
+        run: |
+          az containerapp update \
+            --name "$API_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_NAME.azurecr.io/talentai-api:${{ steps.vars.outputs.tag }}"
+
+      - name: Deploy Web container app
+        run: |
+          az containerapp update \
+            --name "$WEB_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_NAME.azurecr.io/talentai-web:${{ steps.vars.outputs.tag }}"
+
+      - name: Output app URLs
+        run: |
+          echo "API:  https://$(az containerapp show -n "$API_APP" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)"
+          echo "Web:  https://$(az containerapp show -n "$WEB_APP" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)"

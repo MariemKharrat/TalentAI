@@ -29,11 +29,24 @@ builder.Services.AddScoped<IJobMatchingService, JobMatchingService>();
 builder.Services.AddScoped<IJobDescriptionGenerator, JobDescriptionGeneratorService>();
 
 builder.Services.AddControllers();
+
+// Allowed CORS origins are configurable via the "Cors:AllowedOrigins" setting
+// (e.g. env var Cors__AllowedOrigins="https://talentai-web...azurecontainerapps.io").
+// Falls back to the local React dev server when not configured.
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>();
+
+if (allowedOrigins is null || allowedOrigins.Length == 0)
+{
+    allowedOrigins = new[] { "http://localhost:3000" };
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ReactFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -53,6 +66,9 @@ if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
     app.MapOpenApi();
+    // TLS is terminated by the Container Apps ingress in production, so HTTPS
+    // redirection only runs locally to avoid redirect loops behind the proxy.
+    app.UseHttpsRedirection();
 }
 else
 {
@@ -66,9 +82,9 @@ else
     });
 }
 
-app.UseHttpsRedirection();
 app.UseCors("ReactFrontend");
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
 app.Run();

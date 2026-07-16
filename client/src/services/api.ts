@@ -1,8 +1,22 @@
 import axios from 'axios';
 import { Candidate, CvParsingMethod, Job, JobDescriptionRequest, MatchResult } from '../types';
 
+// Resolve the API base URL at runtime (window.__ENV__ is populated by the
+// container entrypoint from the API_BASE_URL env var), falling back to the
+// build-time env var and finally the local dev server.
+declare global {
+  interface Window {
+    __ENV__?: { API_BASE_URL?: string };
+  }
+}
+
+const API_BASE_URL =
+  window.__ENV__?.API_BASE_URL ||
+  process.env.REACT_APP_API_BASE_URL ||
+  'http://localhost:5000';
+
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: `${API_BASE_URL}/api`,
 });
 
 type CandidateApiResponse = Partial<Candidate> & {
@@ -88,7 +102,7 @@ export const candidatesApi = {
     return data;
   },
   getCvUrl(id: string) {
-    return `http://localhost:5000/api/candidates/${id}/cv`;
+    return `${API_BASE_URL}/api/candidates/${id}/cv`;
   },
   async delete(id: string) {
     await api.delete(`/candidates/${id}`);
